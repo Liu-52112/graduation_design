@@ -131,7 +131,6 @@ def main(args):
             model.train_one_epoch(optimizer, training_loader, device)
         elif args.model == 'fedavg':
             model.train_one_epoch_fedavg(optimizer, training_loader, device, 0.01)
-            print('ss')
         elif args.model == 'fedfast':
             model.train_one_epoch(optimizer, training_loader, device, 0.01, epoch-1)
         else:
