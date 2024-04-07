@@ -150,8 +150,11 @@ class FedFast(nn.Module):
                     
         for c in self.clusters:
             selected_clients_in_c = [s for s in self.clusters[c] if s in selected_clients]
+            if(len(selected_clients_in_c) == 0):
+                continue
             for s in self.clusters[c]:
                 if s not in selected_clients:
+                    # print("Update")
                     self.users_embeddings.weight[s].data  = original_user_embedding[s].data +  gama * delta[s]/len(selected_clients_in_c)
         ## 返回本地的 w， G
             
@@ -194,10 +197,10 @@ class FedFast(nn.Module):
                 list_affine_layer_weight.append([self.affine_layer.weight, len(user)])
                 list_affine_layer_bias.append([self.affine_layer.bias, len(user)])
                 sum_n += len(user)
-                weighted[client]['user_embeddings'] = self.users_embeddings.weight.data
-                weighted[client]['item_embeddings'] = self.items_embeddings.weight.data
-                weighted[client]['aff_weights'] = self.affine_layer.weight.data
-                weighted[client]['aff_bias'] = self.affine_layer.bias.data
+                weighted[client]['user_embeddings'] = self.users_embeddings.weight.data.clone()
+                weighted[client]['item_embeddings'] = self.items_embeddings.weight.data.clone()
+                weighted[client]['aff_weights'] = self.affine_layer.weight.data.clone()
+                weighted[client]['aff_bias'] = self.affine_layer.bias.data.clone()
                 num_k[client] = len(user)
                 
 

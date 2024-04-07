@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 
 class FCF(nn.Module):
-    def __init__(self, num_users, num_items, factor_num, drop_ratio=0.01):
+    def __init__(self, num_users, num_items, factor_num, drop_ratio=0.1):
         super(FCF, self).__init__()
         self.num_users = num_users
         self.num_items = num_items
@@ -65,9 +65,9 @@ class FCF(nn.Module):
         
         selected_clients = np.random.choice(range(self.num_users), size=int(self.num_users * client_fraction), replace=False)
         
-        original_item_embedding = self.items_embeddings.weight
-        original_affine_layer_weight = self.affine_layer.weight
-        original_affine_layer_bias = self.affine_layer.bias
+        original_item_embedding = self.items_embeddings.weight.data.clone()
+        original_affine_layer_weight = self.affine_layer.weight.data.clone()
+        original_affine_layer_bias = self.affine_layer.bias.data.clone()
         list_item_embedding = []
         list_affine_layer_weight = []
         list_affine_layer_bias = []
@@ -83,31 +83,33 @@ class FCF(nn.Module):
                 
                 optimizer.step()
                 total_loss += loss.item()
-            with torch.no_grad():
-                sum_n += len(users_ids)
-                list_item_embedding.append([self.items_embeddings.weight, len(users_ids)])
-                self.items_embeddings.weight.data = original_item_embedding
-                
-                list_affine_layer_weight.append([self.affine_layer.weight, len(users_ids)])
-                self.affine_layer.weight.data = original_affine_layer_weight
-                
-                list_affine_layer_bias.append([self.affine_layer.bias, len(users_ids)])
-                self.affine_layer.bias.data = original_affine_layer_bias
-                
+
+            sum_n += len(users_ids)
+            list_item_embedding.append([self.items_embeddings.weight.data.clone(), len(users_ids)])
+            self.items_embeddings.weight.data = original_item_embedding.data.clone()
+            
+            list_affine_layer_weight.append([self.affine_layer.weight.data.clone(), len(users_ids)])
+            self.affine_layer.weight.data = original_affine_layer_weight.data.clone()
+            
+            list_affine_layer_bias.append([self.affine_layer.bias.data.clone(), len(users_ids)])
+            self.affine_layer.bias.data = original_affine_layer_bias.data.clone()
+        
         with torch.no_grad():
+            
             tmp = torch.zeros_like(self.items_embeddings.weight)
             for item_embedding, n_k in list_item_embedding:
-                tmp += (n_k / sum_n) * item_embedding
+                tmp += (n_k / sum_n) * item_embedding.data
+            
             self.items_embeddings.weight.data = tmp
             
             tmp = torch.zeros_like(self.affine_layer.weight)
             for affine_layer_weight, n_k in list_affine_layer_weight:
-                tmp += (n_k / sum_n) * affine_layer_weight
+                tmp += (n_k / sum_n) * affine_layer_weight.data
             self.affine_layer.weight.data = tmp
             
             tmp = torch.zeros_like(self.affine_layer.bias)
             for affine_layer_bias, n_k in list_affine_layer_bias:
-                tmp += (n_k / sum_n) * affine_layer_bias
+                tmp += (n_k / sum_n) * affine_layer_bias.data  
             self.affine_layer.bias.data = tmp
             
         return total_loss
