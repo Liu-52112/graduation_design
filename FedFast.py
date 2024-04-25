@@ -7,6 +7,15 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import random
 import pandas as pd
 
+def add_laplace_noise(data, scale):
+    """
+    向数据添加拉普拉斯噪声。
+    :param data: 要添加噪声的数据。
+    :param scale: 拉普拉斯噪声的规模参数。
+    """
+    noise = torch.distributions.Laplace(0, scale).sample(data.shape)
+    return data + noise
+
 class FedFast(nn.Module):
     def __init__(self, num_users, num_items, factor_num, num_cluster =20, drop_ratio=0.1, user_dict=None):
         super(FedFast, self).__init__()
@@ -25,9 +34,9 @@ class FedFast(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 m.bias.data.zero_()
         
-        self.init_cluster(user_dict)
+        # self.init_cluster(user_dict)
     
-    def init_cluster(self, user_dict):
+    def init_cluster(self, user_dict = None):
         if user_dict is None:
             self.cluster_user()
         else:
@@ -45,10 +54,66 @@ class FedFast(nn.Module):
             for user_id, cluster_id  in enumerate(kmeans.labels_):
                 self.clusters[cluster_id].append(user_dict[str(user_id+1)])
             
+    def init_weights(self, optimizer, training_loader, device = None):
+        users = np.random.permutation(range(self.num_users))
+        training_loader.dataset.generate_ngs()
         
+        #original_user_emb = self.users_embeddings.weight.data.clone()
+        original_item_emb = self.items_embeddings.weight.data.clone()
+        original_aff_weights = self.affine_layer.weight.data.clone()
+        original_aff_bias = self.affine_layer.bias.data.clone()
         
+        list_item_embedding = []
+        list_predict_layer_weight = []
+        list_predict_layer_bias = []
+        
+        sum_n = 0
+        # 本地训练。
+        for i, user_id in tqdm(enumerate(users)):
+            users_ids, items_ids, labels = training_loader.dataset.get_users_all(user_id)
+            users_ids, items_ids, labels = users_ids.to(device),  items_ids.to(device), labels.to(device)
+            for _ in range(1): 
+                optimizer.zero_grad()
+                loss, loss_value = self.bce_loss(users_ids, items_ids, labels, False)
+                loss.backward()
+                optimizer.step()
+                
+            with torch.no_grad():
+                # 保存每个用户的embedding
+                list_item_embedding.append([self.items_embeddings.weight.data.clone(), len(users_ids)])
+                list_predict_layer_weight.append([self.affine_layer.weight.data.clone(), len(users_ids)])
+                list_predict_layer_bias.append([self.affine_layer.bias.data.clone(), len(users_ids)])
+                sum_n += len(users_ids)  
+                              
+                # 用户上传加密的user_embeddings
+                #self.users_embeddings.weight.data[user_id] = add_laplace_noise(self.weighted_k[user_id]['user_embeddings'][user_id], 0.1)
+                
+                # 还原原始的模型。
+                self.items_embeddings.weight.data = original_item_emb.data.clone()
+                self.affine_layer.weight.data = original_aff_weights.data.clone()
+                self.affine_layer.bias.data = original_aff_bias.data.clone()
+                
+        # 用fedavg 去更新全局的self.items_embeddings.weight.data, self.predict_layer.weight.data, self.predict_layer.bias.data
+        with torch.no_grad():
+            
+            tmp = torch.zeros_like(self.items_embeddings.weight)
+            for item_embedding, n_k in list_item_embedding:
+                tmp += (n_k / sum_n) * item_embedding.data
+            self.items_embeddings.weight.data = tmp
+            
+            tmp = torch.zeros_like(self.affine_layer.weight)
+            for affine_layer_weight, n_k in list_predict_layer_weight:
+                tmp += (n_k / sum_n) * affine_layer_weight.data
+            self.affine_layer.weight.data = tmp
+            
+            tmp = torch.zeros_like(self.affine_layer.bias)
+            for affine_layer_bias, n_k in list_predict_layer_bias:
+                tmp += (n_k / sum_n) * affine_layer_bias.data  
+            self.affine_layer.bias.data = tmp
+        self.cluster_user()
     
     def cluster_user(self):
+        self.clusters = {i:[] for i in range(self.num_cluster)}
         user_embeddings = self.users_embeddings.weight.data.cpu()        
         kmeans = KMeans(n_clusters=self.num_cluster, random_state=0,n_init=10)
         cluster_labels =kmeans.fit(user_embeddings)
@@ -161,22 +226,25 @@ class FedFast(nn.Module):
     
     def train_one_epoch(self, optimizer, training_loader, device, client_fraction, epoch):
     
+        self.users_embeddings.weight.data = add_laplace_noise(self.users_embeddings.weight.data.clone(), 0.01)
+    
         training_loader.dataset.generate_ngs()
         
         
         m = max(1, int(client_fraction*self.num_users +1))
+        
         selected_clients = self.ActvSamp(m)
         
         #selected_clients = np.random.choice(range(self.num_users), size=int(self.num_users * client_fraction), replace=False)
         # epoch = torch.tensor(epoch).to(device)
 
-        original_item_embedding = self.items_embeddings.weight
-        original_affine_layer_weight = self.affine_layer.weight
-        original_affine_layer_bias = self.affine_layer.bias
-        original_user_embedding = self.users_embeddings.weight
-        list_item_embedding = []
-        list_affine_layer_weight = []
-        list_affine_layer_bias = []
+        original_item_embedding = self.items_embeddings.weight.data.clone()
+        original_affine_layer_weight = self.affine_layer.weight.data.clone()
+        original_affine_layer_bias = self.affine_layer.bias.data.clone()
+        original_user_embedding = self.users_embeddings.weight.data.clone()
+        # list_item_embedding = []
+        # list_affine_layer_weight = []
+        # list_affine_layer_bias = []
         weighted = {k: {'user_embeddings': torch.zeros_like(self.users_embeddings.weight),
                         'item_embeddings': torch.zeros_like(self.items_embeddings.weight),
                         'aff_weights': torch.zeros_like(self.affine_layer.weight),
@@ -193,9 +261,9 @@ class FedFast(nn.Module):
                 loss.backward()
                 optimizer.step()
             with torch.no_grad():
-                list_item_embedding.append([self.items_embeddings.weight, len(user)])
-                list_affine_layer_weight.append([self.affine_layer.weight, len(user)])
-                list_affine_layer_bias.append([self.affine_layer.bias, len(user)])
+                # list_item_embedding.append([self.items_embeddings.weight, len(user)])
+                # list_affine_layer_weight.append([self.affine_layer.weight, len(user)])
+                # list_affine_layer_bias.append([self.affine_layer.bias, len(user)])
                 sum_n += len(user)
                 weighted[client]['user_embeddings'] = self.users_embeddings.weight.data.clone()
                 weighted[client]['item_embeddings'] = self.items_embeddings.weight.data.clone()
@@ -203,10 +271,14 @@ class FedFast(nn.Module):
                 weighted[client]['aff_bias'] = self.affine_layer.bias.data.clone()
                 num_k[client] = len(user)
                 
-
+                self.users_embeddings.weight.data = original_user_embedding
                 self.items_embeddings.weight.data = original_item_embedding
                 self.affine_layer.weight.data = original_affine_layer_weight
                 self.affine_layer.bias.data = original_affine_layer_bias
-            
+        
         gama = np.exp(-epoch)
         self.ActvAGG(selected_clients, original_user_embedding ,weighted, num_k, gama, device = device)
+        
+        
+    
+            
