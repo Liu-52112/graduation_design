@@ -124,7 +124,7 @@ def main(args):
     epoch = 0
     while True:
         total_loss = 0
-        epoch +=1
+
         epoch_start_time = time.time()
         model.train()
         if args.model =='fcf':
@@ -132,7 +132,9 @@ def main(args):
         elif args.model == 'fedavg':
             model.train_one_epoch_fedavg(optimizer, training_loader, device, 0.01)
         elif args.model == 'fedfast':
-            model.train_one_epoch(optimizer, training_loader, device, 0.01, epoch-1)
+            if epoch ==0:
+                model.init_weights(optimizer, training_loader, device = None)
+            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch-1)
         else:
             training_loader.dataset.generate_ngs()
             for user_ids, item_ids, labels in tqdm(training_loader, desc= "Epoch "+str(epoch)+": "):
@@ -168,6 +170,7 @@ def main(args):
         epoch_end_time = time.time()  # 记录epoch结束的时间
         epoch_duration = epoch_end_time - epoch_start_time
         improvement = False
+        epoch +=1
         if hr > best_hr or ndcg > best_ndcg:
             best_hr = max(hr, best_hr)
             best_ndcg = max(ndcg, best_ndcg)
