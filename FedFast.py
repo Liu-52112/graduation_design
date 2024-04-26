@@ -7,13 +7,13 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import random
 import pandas as pd
 
-def add_laplace_noise(data, scale):
+def add_laplace_noise(data, scale, device):
     """
     向数据添加拉普拉斯噪声。
     :param data: 要添加噪声的数据。
     :param scale: 拉普拉斯噪声的规模参数。
     """
-    noise = torch.distributions.Laplace(0, scale).sample(data.shape)
+    noise = torch.distributions.Laplace(0, scale).sample(data.shape).to(device)
     return data + noise
 
 class FedFast(nn.Module):
@@ -226,7 +226,7 @@ class FedFast(nn.Module):
     
     def train_one_epoch(self, optimizer, training_loader, device, client_fraction, epoch):
     
-        self.users_embeddings.weight.data = add_laplace_noise(self.users_embeddings.weight.data.clone(), 0.01)
+        self.users_embeddings.weight.data = add_laplace_noise(self.users_embeddings.weight.data.clone(), 0.01, device)
     
         training_loader.dataset.generate_ngs()
         

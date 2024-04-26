@@ -130,15 +130,11 @@ def main(args):
         if args.model =='fcf':
             model.train_one_epoch(optimizer, training_loader, device)
         elif args.model == 'fedavg':
-            model.train_one_epoch_fedavg(optimizer, training_loader, device, 0.01)
+            model.train_one_epoch_fedavg(optimizer, training_loader, device, 0.1)
         elif args.model == 'fedfast':
             if epoch ==0:
-                model.init_weights(optimizer, training_loader, device = None)
-            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch)
-        elif args.model == 'fedbso':
-            if epoch ==0:
-                model.init_weights(optimizer, training_loader, device = None)
-            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch)
+                model.init_weights(optimizer, training_loader, device = device)
+            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch-1)
         else:
             training_loader.dataset.generate_ngs()
             for user_ids, item_ids, labels in tqdm(training_loader, desc= "Epoch "+str(epoch)+": "):
@@ -189,8 +185,11 @@ def main(args):
         print(f"Avg. Loss = {avg_loss:.4f} HR_{args.topk} = {hr:.10f} NDCG_{args.topk} = {ndcg:.10f}, Duration: {epoch_duration:.2f} seconds")
         logging.info(f"Epoch {epoch}: Avg. Loss = {avg_loss:.4f} HR_{args.topk} = {hr:.10f} NDCG_{args.topk} = {ndcg:.10f}, Duration: {epoch_duration:.2f} seconds")
         
-        if no_improvement_count >= max_no_improvement_epochs:
-            print(f"Stopping early due to no improvement in HR and NDCG for {max_no_improvement_epochs} consecutive epochs.")
+        # if no_improvement_count >= max_no_improvement_epochs:
+        #     print(f"Stopping early due to no improvement in HR and NDCG for {max_no_improvement_epochs} consecutive epochs.")
+        #     break
+
+        if epoch>=1000:
             break
         
     print(f"New best model saved at epoch {best_epoch+1} with HR = {best_hr:.4f}, NDCG = {best_ndcg:.4f}")
