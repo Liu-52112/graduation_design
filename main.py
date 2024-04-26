@@ -134,7 +134,11 @@ def main(args):
         elif args.model == 'fedfast':
             if epoch ==0:
                 model.init_weights(optimizer, training_loader, device = None)
-            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch-1)
+            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch)
+        elif args.model == 'fedbso':
+            if epoch ==0:
+                model.init_weights(optimizer, training_loader, device = None)
+            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch)
         else:
             training_loader.dataset.generate_ngs()
             for user_ids, item_ids, labels in tqdm(training_loader, desc= "Epoch "+str(epoch)+": "):
@@ -195,7 +199,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a model on a specific device with a specified dataset.')
     parser.add_argument('-d', '--device', type=str, choices=['cpu', 'cuda', 'mps'], default='cpu', help='The device to use for training: cpu, cuda, or mps.')
-    parser.add_argument('-m', '--model', type=str, choices=['mf', 'gmf', 'mlp', 'ncf','fcf', 'fedavg', 'fedfast'], default='mf', help='The model to use for training.')
+    parser.add_argument('-m', '--model', type=str, choices=['mf', 'gmf', 'mlp', 'ncf','fcf', 'fedavg', 'fedfast', 'fedbso'], default='mf', help='The model to use for training.')
     parser.add_argument('-data', '--dataset', type=str, default='ml-100k', help='The dataset to use for training.')
     parser.add_argument('-t', '--topk', type=str, default=20, help='The num of topk items the model recommend.')
     parser.add_argument('-f', '--factor_size', type=int, default=16, help='The size of factor number of the model recommend.')
