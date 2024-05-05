@@ -8,6 +8,7 @@ from MLP import MLP
 from NCF_ import NCF
 from FCF import FCF
 from FedFast import FedFast
+from FedBSO import FedBSO
 import time  # 导入time模块
 import argparse
 from tqdm import tqdm
@@ -76,6 +77,17 @@ def main(args):
     print(num_items)
     all_user_ids = torch.arange(num_users).to(device)
     all_item_idx = torch.arange(num_items).to(device)
+    if args.model == 'fedbso':
+        val_user_item = {}
+        val_data = {}
+        for i in range(num_users+1):
+            val_user_item[i] = test_dataset[i]
+            val_data[i] = []
+            val_data[i].append(val_user_item[i])
+            for j in range(100):
+                val_data[i].append(neg_items_ids[i*100+j])
+            
+    
     # model = BasicMF(num_users+1, num_items+1, 64).to(device)
     '''
     if args.model == 'mf':
@@ -102,9 +114,12 @@ def main(args):
         model = NCF(num_users+1, num_items+1, factor_num=16, num_layers=3, dropout=0.2, model='NeuMF-end').to(device)
         criterion = torch.nn.BCEWithLogitsLoss()
     elif args.model == 'fcf' or args.model == 'fedavg':
-        model = FCF(num_users +1, num_items +1, factor_num= 64).to(device)
+        model = FCF(num_users +1, num_items +1, factor_num= args.factor_size).to(device)
     elif args.model == 'fedfast':
         model = FedFast(num_users+1, num_items+1, factor_num=args.factor_size, num_cluster=20).to(device)
+        criterion = torch.nn.BCEWithLogitsLoss()
+    elif args.model == 'fedbso':
+        model = FedBSO(num_users+1, num_items+1, factor_num=args.factor_size, num_cluster=20, p5=0.5, p6=0.5, if_fedavg=True).to(device)
         criterion = torch.nn.BCEWithLogitsLoss()
         
     #model = BasicMF(num_users+1, num_items+1, 64).to(device)
@@ -134,7 +149,11 @@ def main(args):
         elif args.model == 'fedfast':
             if epoch ==0:
                 model.init_weights(optimizer, training_loader, device = device)
-            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch-1)
+            model.train_one_epoch(optimizer, training_loader, device, 0.1, epoch)
+        elif args.model == 'fedbso':
+            if epoch ==0:
+                model.init_weights(optimizer, training_loader, device = device)
+            model.train_one_epoch(optimizer, training_loader,val_data,val_user_item, device, 0.1, epoch)
         else:
             training_loader.dataset.generate_ngs()
             for user_ids, item_ids, labels in tqdm(training_loader, desc= "Epoch "+str(epoch)+": "):
